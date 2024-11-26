@@ -12,8 +12,6 @@ This repository contains scripts and workflows for conducting microbiome analyse
    - [R Workflow](#r-workflow)
 4. [Usage](#usage)
 5. [Outputs](#outputs)
-6. [Customization](#customization)
-7. [Contact](#contact)
 
 ---
 
