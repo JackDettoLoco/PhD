@@ -73,3 +73,19 @@ The **R pipeline** is designed for downstream statistical and visualization task
 2. Execute the script:
    ```bash
    bash qiime2_workflow.sh
+
+
+
+
+
+
+                _-=====-_
+              /         \
+    ___  ___ //   UNIPI  \\ ___  ___
+   |   ||   | ------------ |   ||   |
+   |___||___|     ___      |___||___|
+      ( o o )    ( o )        ( o o )
+============================( o )======
+    \_____________________/   '-'
+     \________===________/
+      //                 \\
