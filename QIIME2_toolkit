@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# Define path variables
+BASE_DIR="/User/"
+QIIME2_DIR="$BASE_DIR/QIIME2"
+INPUT_PATH="$BASE_DIR/Sequence"
+CLASSIFIER_PATH="/silva-138.1-ssu-nr99-515f-907r-classifier.qza"
+METADATA_FILE="$QIIME2_DIR/Metadata.tsv"
+
+# Create output directory if it doesn't exist
+mkdir -p "$QIIME2_DIR"
+
+# Import paired-end sequences
+qiime tools import \
+  --type 'SampleData[PairedEndSequencesWithQuality]' \
+  --input-path "$INPUT_PATH" \
+  --input-format CasavaOneEightSingleLanePerSampleDirFmt \
+  --output-path "$QIIME2_DIR/demux-paired-end.qza"
+
+# Summarize demultiplexed sequences
+qiime demux summarize \
+  --i-data "$QIIME2_DIR/demux-paired-end.qza" \
+  --o-visualization "$QIIME2_DIR/demux-paired-end.qzv"
+
+# Denoising with DADA2
+qiime dada2 denoise-paired \
+  --i-demultiplexed-seqs "$QIIME2_DIR/demux-paired-end.qza" \
+  --p-trunc-len-f 0 \
+  --p-trunc-len-r 0 \
+  --p-n-threads 0 \
+  --p-min-overlap 20 \
+  --p-pooling-method 'pseudo' \
+  --output-dir "$QIIME2_DIR/dada2_output" \
+  --verbose
+
+# Summarize the feature table
+qiime feature-table summarize \
+  --i-table "$QIIME2_DIR/dada2_output/table.qza" \
+  --o-visualization "$QIIME2_DIR/dada2_output/table.qzv" \
+  --m-sample-metadata-file "$METADATA_FILE"
+
+# Tabulate representative sequences
+qiime feature-table tabulate-seqs \
+  --i-data "$QIIME2_DIR/dada2_output/representative_sequences.qza" \
+  --o-visualization "$QIIME2_DIR/dada2_output/representative_sequences.qzv"
+
+# Tabulate denoising statistics
+qiime metadata tabulate \
+  --m-input-file "$QIIME2_DIR/dada2_output/denoising_stats.qza" \
+  --o-visualization "$QIIME2_DIR/dada2_output/denoising_stats.qzv"
+
+# Taxonomic classification with sklearn
+qiime feature-classifier classify-sklearn \
+  --i-classifier "$CLASSIFIER_PATH" \
+  --i-reads "$QIIME2_DIR/dada2_output/representative_sequences.qza" \
+  --o-classification "$QIIME2_DIR/taxonomy.qza" \
+  --p-n-jobs 5
+
+# Tabulate taxonomy
+qiime metadata tabulate \
+  --m-input-file "$QIIME2_DIR/taxonomy.qza" \
+  --o-visualization "$QIIME2_DIR/taxonomy.qzv"
+
+# Create taxonomic barplot
+qiime taxa barplot \
+  --i-table "$QIIME2_DIR/dada2_output/table.qza" \
+  --i-taxonomy "$QIIME2_DIR/taxonomy.qza" \
+  --m-metadata-file "$METADATA_FILE" \
+  --o-visualization "$QIIME2_DIR/barplot.qzv"
+
+# Build phylogenetic tree
+qiime phylogeny align-to-tree-mafft-fasttree \
+  --i-sequences "$QIIME2_DIR/dada2_output/representative_sequences.qza" \
+  --p-n-threads 'auto' \
+  --output-dir "$QIIME2_DIR/tree"
+
+# Phylogenetic diversity analysis
+qiime diversity core-metrics-phylogenetic \
+  --i-phylogeny "$QIIME2_DIR/tree/rooted_tree.qza" \
+  --i-table "$QIIME2_DIR/dada2_output/table.qza" \
+  --p-sampling-depth #Min_sample_dimention \
+  --m-metadata-file "$METADATA_FILE" \
+  --output-dir "$QIIME2_DIR/core-metrics-results"
+
+# =====================================================
+# Explanation of the script
+# =====================================================
+# This script performs a metagenomic analysis using QIIME2. The main steps are:
+#
+# 1. **Data Import**:
+#    - Paired-end sequences are imported from a standard Casava format.
+#
+# 2. **Pre-processing**:
+#    - The sequences are demultiplexed, and a summary is generated for quality control.
+#
+# 3. **Denoising with DADA2**:
+#    - Noise is removed, a feature table is created, and representative sequences are extracted.
+#
+# 4. **Taxonomic Analysis**:
+#    - Representative sequences are classified using a pre-trained classifier (Silva).
+#    - A taxonomic barplot is generated to visualize the composition of the samples.
+#
+# 5. **Phylogenetic Analysis**:
+#    - A phylogenetic tree is constructed using MAFFT and FastTree.
+#    - Core diversity metrics are calculated, including:
+#      - Alpha diversity (e.g., Shannon, Observed OTUs).
+#      - Beta diversity (e.g., Bray-Curtis, UniFrac distances).
+#
+# 6. **Organization**:
+#    - Outputs are stored in structured subdirectories for better organization and easier access.
+#
+# Notes:
+# - Path variables and input files are centralized to improve readability and maintainability.
+# - The script is tailored for specific datasets but can be generalized by accepting dynamic inputs.
+# - Ensure that required dependencies (QIIME2, classifier, etc.) are installed and paths are correctly set.
+
