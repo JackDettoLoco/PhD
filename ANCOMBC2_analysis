@@ -1,0 +1,105 @@
+# Load required libraries
+library(tidyverse)
+library(phyloseq)
+library(qiime2R)
+library(microbiome)
+library(ANCOMBC)
+
+# Source custom functions
+source("/Function_source.R")
+
+# Define file paths and working directory
+path <- "/In_put_Directory"
+setwd("/Out_put_Directory")
+
+# Load Phyloseq object
+phy <- folder_qza_to_phyloseq(paste0(path, "/QIIME2/"), auto = TRUE)
+
+# Filter out "Unassigned" taxa if their sum exceeds 1% of total counts
+if (
+  sum(taxa_sums(prune_taxa(taxa = phy@tax_table[,1][which(phy@tax_table[,1] == "Unassigned")] %>% rownames(), x = phy))) /
+  sum(taxa_sums(prune_taxa(taxa = phy@tax_table[,1][which(phy@tax_table[,1] != "Unassigned")] %>% rownames(), x = phy))) * 100 > 1
+) {
+  phy <- prune_taxa(taxa = phy@tax_table[,1][which(phy@tax_table[,1] != "Unassigned")] %>% rownames(), x = phy)
+}
+
+# Initialize phyloseq object for analysis
+physeq_tq <- phy
+physeq_no <- physeq_tq
+
+# Define sample groups for comparison
+comb.list <- list(
+  #Sample combination list
+)
+
+# Specify taxonomic levels to analyze
+index <- c("Phylum", "Class", "Order", "Family", "Genus")
+set.seed(123)
+
+# Column of reference for grouping
+colonna_di_riferimento <- "Sample"
+
+# Loop through taxonomic levels and groups for ANCOMBC2 analysis
+for (m in 1:length(index)) {
+  tax_level <- index[m]
+  
+  for (i in 1:length(comb.list)) {
+    # Prune phyloseq object to include only relevant samples and taxa
+    a <- prune_samples(samples = sample_names(physeq_tq)[which(physeq_tq@sam_data[, colonna_di_riferimento][[1]] %in% comb.list[[i]])], x = physeq_tq)
+    a <- prune_taxa(taxa = taxa_sums(a) > 0, x = a)
+    a@sam_data <- a@sam_data[, 2]
+    
+    # Reorder samples alphabetically
+    a <- microViz::ps_reorder(ps = a, sample_order = sample_names(a)[order(sample_names(a))])
+    
+    # Run ANCOMBC2 analysis
+    result_name <- paste0("Ancom_", names(comb.list[i]), "_", tax_level)
+    assign(result_name, ANCOMBC::ancombc2(
+      data = a, assay_name = "counts", tax_level = tax_level,
+      fix_formula = colonna_di_riferimento, rand_formula = NULL,
+      p_adj_method = "BH", pseudo_sens = TRUE,
+      prv_cut = 0.1, lib_cut = 0, s0_perc = 0.05,
+      group = colonna_di_riferimento, struc_zero = TRUE, neg_lb = TRUE,
+      alpha = 0.05, n_cl = 25, verbose = TRUE,
+      global = TRUE, pairwise = TRUE, dunnet = TRUE, trend = FALSE,
+      iter_control = list(tol = 0.01, max_iter = 20, verbose = TRUE),
+      em_control = list(tol = 1e-5, max_iter = 100),
+      lme_control = lme4::lmerControl(),
+      mdfdr_control = list(fwer_ctrl_method = "holm", B = 100),
+      trend_control = list(contrast = NULL, node = NULL, solver = "ECOS", B = 100)
+    ))
+    
+    # Save results to file
+    output_dir <- paste0(path, "/R_out/ANCOMBC2_Taxonomy/", names(comb.list[i]))
+    dir.create(path = output_dir, showWarnings = FALSE)
+    write.table(
+      x = get(result_name)$res_pair,
+      file = paste0(output_dir, "/AncomBC2_", names(comb.list[i]), "_", tax_level, ".tsv"),
+      row.names = FALSE, col.names = TRUE, sep = "\t", dec = "."
+    )
+  }
+}
+
+# =====================================================
+# Explanation of the script
+# =====================================================
+# This script performs taxonomic analysis using ANCOMBC2 on microbiome data processed in QIIME2. 
+# It includes:
+# 
+# 1. **Loading and preprocessing**:
+#    - Phyloseq objects are loaded and unassigned taxa are optionally filtered out.
+#
+# 2. **Defining sample groups**:
+#    - Sample groups for comparisons are defined as lists.
+#
+# 3. **ANCOMBC2 analysis**:
+#    - Differential abundance analysis is conducted at multiple taxonomic levels.
+#    - Results include pairwise comparisons, adjusted p-values, and log fold changes (LFC).
+#
+# 4. **Results export**:
+#    - Results are saved as `.tsv` files, one for each combination of group and taxonomic level.
+#
+# Notes:
+# - Ensure paths to data and scripts are correctly set.
+# - Modify the `comb.list` and `index` variables as needed for specific analyses.
+# - Additional filtering and visualization steps can be added based on downstream requirements.
